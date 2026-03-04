@@ -75,6 +75,23 @@ export function initDb() {
       FOREIGN KEY (changed_by_user_id) REFERENCES users(id)
     )
   `);
+
+  // Customers Table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT UNIQUE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Add customer_phone to sales if it doesn't exist
+  try {
+    db.exec(`ALTER TABLE sales ADD COLUMN customer_phone TEXT`);
+  } catch (e) {
+    // Column likely exists
+  }
   
   console.log('Database initialized successfully');
 }

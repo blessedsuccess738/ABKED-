@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Sale, SaleItem } from '../types';
-import { Search, Eye, Printer, Calendar } from 'lucide-react';
+import { Search, Eye, Printer, Calendar, Download } from 'lucide-react';
 import jsPDF from 'jspdf';
-
 import autoTable from 'jspdf-autotable';
 
 const SalesHistory: React.FC = () => {
@@ -65,8 +64,9 @@ const SalesHistory: React.FC = () => {
     doc.text(`Date: ${new Date(sale.created_at).toLocaleString()}`, 5, 40);
     doc.text(`Staff: ${sale.staff_name}`, 5, 45);
     if (sale.customer_name) doc.text(`Customer: ${sale.customer_name}`, 5, 50);
+    if (sale.customer_phone) doc.text(`Phone: ${sale.customer_phone}`, 5, 55);
 
-    doc.line(5, 55, 75, 55);
+    doc.line(5, 60, 75, 60);
 
     const tableColumn = ["Item", "Qty", "Price", "Total"];
     const tableRows: any[] = [];
@@ -84,7 +84,7 @@ const SalesHistory: React.FC = () => {
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: 60,
+      startY: 65,
       theme: 'plain',
       styles: { fontSize: 7, cellPadding: 1 },
       headStyles: { fontStyle: 'bold' },
@@ -110,8 +110,34 @@ const SalesHistory: React.FC = () => {
 
   const filteredSales = sales.filter(s => 
     s.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.customer_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    s.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.customer_phone?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const exportToCSV = () => {
+    const headers = ['Invoice Number', 'Date', 'Customer Name', 'Customer Phone', 'Staff Name', 'Total Amount', 'Payment Method'];
+    const rows = filteredSales.map(sale => [
+      sale.invoice_number,
+      new Date(sale.created_at).toLocaleString(),
+      sale.customer_name || 'N/A',
+      sale.customer_phone || 'N/A',
+      sale.staff_name || 'N/A',
+      sale.total_amount,
+      sale.payment_method
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n" 
+      + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "sales_history.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div>
@@ -120,12 +146,21 @@ const SalesHistory: React.FC = () => {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
-            placeholder="Search invoice..."
+            placeholder="Search invoice, customer..."
             className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg w-full focus:ring-emerald-500 focus:border-emerald-500"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+        {user?.role === 'ADMIN' && (
+            <button 
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              <Download size={18} />
+              Export CSV
+            </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
@@ -148,7 +183,10 @@ const SalesHistory: React.FC = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {new Date(sale.created_at).toLocaleDateString()}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{sale.customer_name || 'N/A'}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div>{sale.customer_name || 'N/A'}</div>
+                  <div className="text-xs text-gray-400">{sale.customer_phone}</div>
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{sale.staff_name}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-emerald-600">₦{sale.total_amount.toLocaleString()}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -188,6 +226,7 @@ const SalesHistory: React.FC = () => {
               <div>
                 <p className="text-gray-500">Customer</p>
                 <p className="font-medium">{selectedSale.customer_name || 'Walk-in'}</p>
+                <p className="text-xs text-gray-400">{selectedSale.customer_phone}</p>
               </div>
               <div>
                 <p className="text-gray-500">Date</p>

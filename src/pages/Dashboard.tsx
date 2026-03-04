@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { DollarSign, ShoppingBag, TrendingUp, Package, AlertTriangle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { DollarSign, ShoppingBag, TrendingUp, Package, Download } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const Dashboard: React.FC = () => {
   const { user, token } = useAuth();
@@ -48,8 +48,58 @@ const Dashboard: React.FC = () => {
     return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
   };
 
+  const exportToCSV = () => {
+    if (!stats) return;
+
+    const headers = ['Metric', 'Value'];
+    const rows = [
+      ['Today Sales', stats.todaySales],
+      ['Week Sales', stats.weekSales],
+      ['Month Sales', stats.monthSales],
+      ['Total Invoices', stats.totalInvoices],
+    ];
+
+    if (user?.role === 'ADMIN') {
+      rows.push(['Total Revenue', stats.totalRevenue]);
+      rows.push(['Total Profit', stats.totalProfit]);
+      rows.push(['Stock Value', stats.stockValue]);
+      
+      if (stats.paymentMethods) {
+         stats.paymentMethods.forEach((pm: any) => {
+             rows.push([`Sales via ${pm.payment_method}`, pm.total]);
+         });
+      }
+    }
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n" 
+      + rows.map(e => e.join(",")).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "dashboard_stats.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+         {user?.role === 'ADMIN' && (
+            <button 
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition-colors"
+            >
+              <Download size={18} />
+              Export Stats CSV
+            </button>
+         )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Today's Sales"
@@ -78,35 +128,73 @@ const Dashboard: React.FC = () => {
       </div>
 
       {user?.role === 'ADMIN' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <StatCard
-            title="Total Revenue (All Time)"
-            value={formatCurrency(stats?.totalRevenue || 0)}
-            icon={DollarSign}
-            color="bg-indigo-600"
-          />
-          <StatCard
-            title="Total Profit"
-            value={formatCurrency(stats?.totalProfit || 0)}
-            icon={TrendingUp}
-            color="bg-green-600"
-          />
-           <StatCard
-            title="Stock Value"
-            value={formatCurrency(stats?.stockValue || 0)}
-            icon={Package}
-            color="bg-slate-600"
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <StatCard
+              title="Total Revenue (All Time)"
+              value={formatCurrency(stats?.totalRevenue || 0)}
+              icon={DollarSign}
+              color="bg-indigo-600"
+            />
+            <StatCard
+              title="Total Profit"
+              value={formatCurrency(stats?.totalProfit || 0)}
+              icon={TrendingUp}
+              color="bg-green-600"
+            />
+            <StatCard
+              title="Stock Value"
+              value={formatCurrency(stats?.stockValue || 0)}
+              icon={Package}
+              color="bg-slate-600"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             {/* Payment Method Chart */}
+             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                <h3 className="text-lg font-semibold mb-4">Sales by Payment Method</h3>
+                <div className="h-64">
+                  {stats?.paymentMethods && stats.paymentMethods.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={stats.paymentMethods}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="total"
+                          nameKey="payment_method"
+                        >
+                          {stats.paymentMethods.map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-slate-400">
+                      No sales data available
+                    </div>
+                  )}
+                </div>
+             </div>
+             
+             {/* Placeholder for other charts */}
+             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                <h3 className="text-lg font-semibold mb-4">Sales Trend</h3>
+                <div className="h-64 flex items-center justify-center text-slate-400">
+                  Chart visualization coming soon
+                </div>
+             </div>
+          </div>
+        </>
       )}
-      
-      {/* Placeholder for charts - can be expanded */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-        <h3 className="text-lg font-semibold mb-4">Sales Overview</h3>
-        <div className="h-64 flex items-center justify-center text-slate-400">
-          Chart visualization coming soon
-        </div>
-      </div>
     </div>
   );
 };

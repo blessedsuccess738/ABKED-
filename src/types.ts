@@ -26,6 +26,7 @@ export interface Sale {
   id: number;
   invoice_number: string;
   customer_name: string;
+  customer_phone?: string;
   total_amount: number;
   payment_method: 'CASH' | 'TRANSFER' | 'POS';
   created_at: string;

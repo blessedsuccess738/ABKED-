@@ -171,10 +171,25 @@ app.delete('/api/products/:id', authenticateToken, (req: any, res) => {
   }
 });
 
+// --- CUSTOMER ROUTES ---
+
+app.get('/api/customers/search', authenticateToken, (req: any, res) => {
+  const { q } = req.query;
+  if (!q) return res.json([]);
+  
+  const customers = db.prepare(`
+    SELECT * FROM customers 
+    WHERE name LIKE ? OR phone LIKE ? 
+    LIMIT 10
+  `).all(`%${q}%`, `%${q}%`);
+  
+  res.json(customers);
+});
+
 // --- SALES ROUTES ---
 
 app.post('/api/sales', authenticateToken, (req: any, res) => {
-  const { customerName, paymentMethod, items } = req.body; // items: [{ productId, quantity, unitPrice }]
+  const { customerName, customerPhone, paymentMethod, items } = req.body; // items: [{ productId, quantity, unitPrice }]
   const userId = req.user.id;
 
   if (!items || items.length === 0) return res.status(400).json({ message: 'No items in sale' });
@@ -189,11 +204,22 @@ app.post('/api/sales', authenticateToken, (req: any, res) => {
       totalAmount += item.quantity * item.unitPrice;
     }
 
+    // Handle Customer
+    if (customerName && customerPhone) {
+      const existingCustomer: any = db.prepare('SELECT * FROM customers WHERE phone = ?').get(customerPhone);
+      if (existingCustomer) {
+        // Update name if changed? Let's keep original for now or update it.
+        // db.prepare('UPDATE customers SET name = ? WHERE id = ?').run(customerName, existingCustomer.id);
+      } else {
+        db.prepare('INSERT INTO customers (name, phone) VALUES (?, ?)').run(customerName, customerPhone);
+      }
+    }
+
     // Insert Sale
     const saleResult = db.prepare(`
-      INSERT INTO sales (invoice_number, user_id, customer_name, total_amount, payment_method)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(invoiceNumber, userId, customerName, totalAmount, paymentMethod);
+      INSERT INTO sales (invoice_number, user_id, customer_name, customer_phone, total_amount, payment_method)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(invoiceNumber, userId, customerName, customerPhone, totalAmount, paymentMethod);
 
     const saleId = saleResult.lastInsertRowid;
 
@@ -213,12 +239,6 @@ app.post('/api/sales', authenticateToken, (req: any, res) => {
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(saleId, item.productId, item.quantity, item.unitPrice, product.cost_price, item.quantity * item.unitPrice);
       
-      // Log price change if sold at different price than current selling price (implicit edit)
-      // The prompt says "If staff edits price... System must log it".
-      // This usually happens in the UI before adding to cart.
-      // If the unitPrice sent is different from product.selling_price, we should log it?
-      // Or maybe the UI calls the product update endpoint separately?
-      // Let's assume the UI sends the final price.
       if (item.unitPrice !== product.selling_price) {
          db.prepare(`
             INSERT INTO price_logs (product_id, old_price, new_price, changed_by_user_id)
@@ -240,30 +260,24 @@ app.post('/api/sales', authenticateToken, (req: any, res) => {
 });
 
 app.get('/api/sales', authenticateToken, (req: any, res) => {
-  // Admin sees all, Staff sees theirs?
-  // "Staff dashboard must show... List of invoices created"
-  // "Admin dashboard must show... View all invoices"
-  
-  let stmt;
   if (req.user.role === 'ADMIN') {
-    stmt = db.prepare(`
+    const sales = db.prepare(`
       SELECT s.*, u.full_name as staff_name 
       FROM sales s 
       JOIN users u ON s.user_id = u.id 
       ORDER BY s.created_at DESC
-    `);
+    `).all();
+    res.json(sales);
   } else {
-    stmt = db.prepare(`
+    const sales = db.prepare(`
       SELECT s.*, u.full_name as staff_name 
       FROM sales s 
       JOIN users u ON s.user_id = u.id 
-      WHERE s.user_id = ? 
+      WHERE s.user_id = ?
       ORDER BY s.created_at DESC
-    `);
+    `).all(req.user.id);
+    res.json(sales);
   }
-  
-  const sales = req.user.role === 'ADMIN' ? stmt.all() : stmt.all(req.user.id);
-  res.json(sales);
 });
 
 app.get('/api/sales/:id', authenticateToken, (req, res) => {
@@ -332,10 +346,17 @@ app.get('/api/dashboard/stats', authenticateToken, (req: any, res) => {
       SELECT SUM(cost_price * quantity) as value FROM products
     `).get();
 
+    const paymentMethods = db.prepare(`
+      SELECT payment_method, SUM(total_amount) as total
+      FROM sales
+      GROUP BY payment_method
+    `).all();
+
     res.json({
       ...stats,
       totalProfit: totalProfitResult.profit || 0,
-      stockValue: stockValueResult.value || 0
+      stockValue: stockValueResult.value || 0,
+      paymentMethods
     });
   } else {
     res.json(stats);
